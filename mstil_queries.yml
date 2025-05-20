@@ -2,11 +2,33 @@
 - id: Q001
   title: Consulta deuda vida de matriculas en parque no circulante
   description: >
-    Consulta la deuda viva (pendiente de cobrar) para matrículas proporcionadas por la .
+    Consulta la deuda viva (pendiente de cobrar) para matrículas proporcionadas por la ATM (Agencia Tributaria de Madrid) y almacenadas en la tabla PNC_JAR .
   sql: |
-    SELECT nombre, fecha_alta, num_socio
-    FROM socios
-    WHERE fecha_alta >= CURRENT_DATE - INTERVAL '30 day';
+  select 
+  	pnc.matricula Matricula, 
+  	tpp.IDENTIFICADOR_FISCAL 'Identificador fiscal', 
+  	tpp.NOMBRE_COMPLETO 'Nombre completo', 
+  	year(fechadesde) Ejercicio, 
+  	tvv.IDENTIFICADOR_VALOR Identificador, 
+  	tvv.IDENTIFICADOR_DESGLOSE Desglose, 
+  	tvv.importe Importe, 
+  	tvev.DESCRIPCION + ' ('+ tvv.VAL_ESTADOS_VALOR_ID + ')' Situacion,
+  case tphc.PER_CALIF_INCOMP_ID
+  	when 6215600010947710700000 then 'S'
+  	else 'N'
+  end 'Fallecido',
+  case
+      when tvv.ESCASA_CUANTIA = 1 then 'S'
+      else 'N'
+  end 'Escasa Cuantía'
+  from pnc_jab pnc
+  	inner join til_val_valores tvv with(nolock) on tvv.LITERAL_OBJETOTRIB = pnc.matricula
+  	inner join TIL_PER_PERSONAS tpp with(nolock) on tpp.DBOID = tvv.PER_PERSONAS_ID
+  	inner join TIL_VAL_ESTADOS_VALOR tvev with(nolock) on tvev.CODIGO = tvv.VAL_ESTADOS_VALOR_ID
+  	left join TIL_PER_H_CLASIFICACION tphc with(nolock) on tpp.DBOID = tphc.PER_PERSONAS_ID
+  where tvv.VAL_ESTADOS_VALOR_ID in ('E','NA','V','RV','PV','AP')
+  order by tvv.LITERAL_OBJETOTRIB, tvv.IDENTIFICADOR_VALOR, tvv.IDENTIFICADOR_DESGLOSE 
+  ;
 
 - id: Q002
   title: cobros parque no circulante
