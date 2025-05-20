@@ -77,3 +77,107 @@
    WHERE
    	tvv.VAL_ESTADOS_VALOR_ID in ('VC', 'VCB', 'VP', 'VCP', 'EC','ECB','EP')
   ORDER BY tvv.LITERAL_OBJETOTRIB, tvv.IDENTIFICADOR_VALOR, tvv.IDENTIFICADOR_DESGLOSE   
+
+- id: Q003
+  title: Deuda viva y cobros a parque no circulante
+  description: >
+     Consulta la deuda viva y los cobros realizados a vehículos con matrículas proporcionadas por la ATM (Agencia Tributaria de Madrid) que se almacenan en la tabla PNC_JAB.
+     Para ello une dos consultas partiendo de TIL_VAL_VALORES. En la primera obtiene la deuda viva (determinada por el estado del valor) y en la segunda los cobros, filtrando 
+     aquellas operaciones que son cobros para unos determinados estados del valor
+  sql: |
+    /* CONSULTA DE DEUDA VIVA */
+    select pnc.matricula, 
+    case
+    	when toot.FECHA_BAJA is null then 'Alta'
+    	else 'Baja'
+    end 'Estado',
+    tpp.IDENTIFICADOR_FISCAL , tpp.NOMBRE_COMPLETO , 
+    case tphc.PER_CALIF_INCOMP_ID
+    	when 6215600010947710700000 then 'S'
+    	else 'N'
+    end 'Fallecido',
+    year(fechadesde) 'Ejercicio', tvtv.DESCRIPCION 'Tipo', tvv.IDENTIFICADOR_VALOR, tvv.IDENTIFICADOR_DESGLOSE, 
+    case
+    	when tvv.IDENTIFICADOR_DESGLOSE <> '0000' then ''
+    	when tddv.dboid is not null then 'S'
+    	else 'N'
+    end 'Domiciliado',
+    case
+    	when tvv.IDENTIFICADOR_DESGLOSE <> '0000' then ''
+    	when tvb.VALORES_ID is null then 'Sin BBFF'
+    	else tvb.TEXTO_BENEFICIO_FISCAL
+    end 'BBFF',
+    case
+    	when tvv.IDENTIFICADOR_DESGLOSE <> '0000' then '0'
+    	when tvb.VALORES_ID is null then '0'
+    	else tvb.importe_beneficio_fiscal
+    end 'Importe BBFF',
+    0 'Importe cobrado',
+    tvev.DESCRIPCION 'Estado deuda', 
+    'IMPAGADO' 'Método de pago'
+    from pnc_jab pnc
+    inner join til_val_valores tvv with(nolock) on tvv.LITERAL_OBJETOTRIB = pnc.matricula
+    inner join TIL_PER_PERSONAS tpp with(nolock) on tpp.DBOID = tvv.PER_PERSONAS_ID
+    inner join TIL_VAL_ESTADOS_VALOR tvev with(nolock) on tvev.CODIGO = tvv.VAL_ESTADOS_VALOR_ID
+    inner join TIL_VAL_TIPOS_VALOR tvtv with(nolock) on tvv.VAL_TIPOS_VALOR_ID = tvtv.DBOID
+    inner join til_otr_objetos_trb toot with(nolock) on tvv.OTR_OBJETOS_TRB_ID = toot.DBOID
+    left join TIL_PER_H_CLASIFICACION tphc with(nolock) on tpp.DBOID = tphc.PER_PERSONAS_ID
+    left join TIL_VAL_BFISCALES tvb with(nolock) on tvb.VALORES_ID = tvv.DBOID
+    left join TIL_DOM_DOMICILIACIONES_VALOR tddv with(nolock) on tddv.val_valores_id = tvv.dboid
+    where tvv.VAL_ESTADOS_VALOR_ID in ('E','NA','V','RV','PV','AP','VB') and tvv.IDENTIFICADOR_VALOR like '218%' and tvv.importe>=0
+    and year(fechadesde) >= 2010
+    union
+    /* CONSULTA DE COBROS */
+    select pnc.matricula, 
+    case
+    	when toot.FECHA_BAJA is null then 'Alta'
+    	else 'Baja'
+    end 'Estado',
+    tpp.IDENTIFICADOR_FISCAL , tpp.NOMBRE_COMPLETO , 
+    case tphc.PER_CALIF_INCOMP_ID
+    	when 6215600010947710700000 then 'S'
+    	else 'N'
+    end 'Fallecido',
+    year(fechadesde) 'Ejercicio', tvtv.DESCRIPCION 'Tipo', tvv.IDENTIFICADOR_VALOR, tvv.IDENTIFICADOR_DESGLOSE, 
+    case
+    	when tcfp.DESCRIPCION is not null and tcfp.DESCRIPCION = 'EJECUTIVA' then ''
+    	when tvv.IDENTIFICADOR_DESGLOSE <> '0000' then ''
+    	when tddv.dboid is not null then 'S'
+    	else 'N'
+    end 'Domiciliado',
+    case
+    	when tvb.VALORES_ID is null then 'Sin BBFF'
+    	else tvb.TEXTO_BENEFICIO_FISCAL
+    end 'BBFF',
+    case
+    	when tvb.VALORES_ID is null then '0'
+    	else tvb.importe_beneficio_fiscal
+    end 'Importe BBFF',
+     isnull(tvdp.CUOTA_MUNICIPAL, 0)
+     +isnull(tvdp.INTERESES_SUSPENSIVOS, 0)
+     +isnull(tvdp.INTERESES_DEMORA, 0)
+     +isnull(tvdp.COSTAS, 0)
+     +isnull(tvdp.RECARGO_EJECUTIVO, 0)
+     +isnull(tvdp.RECARGO_APREMIO_ORD, 0)
+     +isnull(tvdp.RECARGO, 0)
+     +isnull(tvdp.EXCESO+tvdp.DUPLICADO, 0) 'Importe cobrado',
+    tvev.DESCRIPCION 'Estado deuda', 
+    case 
+    	when tcfp.dboid is null then ''
+    	else tcfp.DESCRIPCION
+    end 'Método de pago'
+    from pnc_jab pnc
+    inner join til_val_valores tvv with(nolock) on tvv.LITERAL_OBJETOTRIB = pnc.matricula
+    inner join TIL_PER_PERSONAS tpp with(nolock) on tpp.DBOID = tvv.PER_PERSONAS_ID
+    inner join TIL_VAL_ESTADOS_VALOR tvev with(nolock) on tvev.CODIGO = tvv.VAL_ESTADOS_VALOR_ID
+    inner join TIL_VAL_TIPOS_VALOR tvtv with(nolock) on tvv.VAL_TIPOS_VALOR_ID = tvtv.DBOID 
+    inner join til_otr_objetos_trb toot with(nolock) on tvv.OTR_OBJETOS_TRB_ID = toot.DBOID 
+    left join TIL_VAL_REGISTRO_OPV tvro with(nolock) on tvro.VAL_VALORES_ID = tvv.DBOID
+    left join TIL_VAL_DESG_PARTIDAS tvdp with(nolock) on tvdp.VAL_REGISTRO_OPV_ID = tvro.DBOID 
+    left join TIL_COB_FORMAS_PAGO tcfp with(nolock) on tcfp.dboid = tvro.COB_FORMAS_PAGO_ID 
+    left join TIL_PER_H_CLASIFICACION tphc with(nolock) on tpp.DBOID = tphc.PER_PERSONAS_ID
+    left join TIL_VAL_BFISCALES tvb with(nolock) on tvb.VALORES_ID = tvv.DBOID
+    left join TIL_DOM_DOMICILIACIONES_VALOR tddv with(nolock) on tddv.val_valores_id = tvv.dboid
+    where tvv.VAL_ESTADOS_VALOR_ID in ('VCB','RVC','ECB','VC','EC','RCB') and tvv.IDENTIFICADOR_VALOR like '218%' and tvv.importe>=0
+    and tvro.VAL_TIPOS_OP_VALOR_ID = 6310600000164248200000
+    and year(fechadesde) >= 2010
