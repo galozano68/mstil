@@ -1,0 +1,57 @@
+# mastil_queries.yml
+- id: Q001
+  title: Consulta deuda vida de matriculas en parque no circulante
+  description: >
+    Consulta la deuda viva (pendiente de cobrar) para matrículas proporcionadas por la .
+  sql: |
+    SELECT nombre, fecha_alta, num_socio
+    FROM socios
+    WHERE fecha_alta >= CURRENT_DATE - INTERVAL '30 day';
+
+- id: Q002
+  title: cobros parque no circulante
+  description: >
+     Consulta los cobros realizados a vehículos con matrículas proporcionadas por la ATM (Agencia Tributaria de Madrid) que se almacenan en la tabla PNC_JAB.
+  sql: |
+    SELECT
+    	pnc.matricula Matricula,
+    	tpp.IDENTIFICADOR_FISCAL 'Identificador fiscal', 
+    	tpp.NOMBRE_COMPLETO 'Nombre completo', 
+    	year(fechadesde) Ejercicio, 
+    	tvv.IDENTIFICADOR_VALOR Identificador, 
+    	tvv.IDENTIFICADOR_DESGLOSE Desglose, 
+    	tvv.importe Importe, 
+    	tvev.DESCRIPCION + ' ('+ tvv.VAL_ESTADOS_VALOR_ID + ')' Situacion,
+    	tvv.Importe Cuota,
+    	tvtv.DESCRIPCION 'Tipo de valor',
+    	    CASE
+        	WHEN tvtv.DESCRIPCION ='RECIBO' AND tddv.DBOID IS NOT NULL THEN 'S'
+        	ELSE 'N'
+        END Domiciliado,
+    	tcec.DESCRIPCION 'Estado',
+      tcfp.DESCRIPCION 'Forma pago',
+      tvb.TEXTO_BENEFICIO_FISCAL 'Beneficio Fiscal', -- coincide con el descriptor del beneficio fiscal
+      tvb.IMPORTE_BENEFICIO_FISCAL 'Importe BFI'  
+  FROM 
+  	pnc_jab pnc
+  	inner join TIL_VAL_VALORES tvv with(nolock) on tvv.LITERAL_OBJETOTRIB = pnc.matricula
+  	-- INFORMACIÓN DEL ESTADO DE LA LIQUIDACIÓN EN PERIODO VOLUNTARIO
+  	left JOIN TIL_VAL_TIPOS_VALOR tvtv WITH(NOLOCk) on tvv.VAL_TIPOS_VALOR_ID = tvtv.DBOID
+  	left JOIN TIL_VAL_ESTADOS_VALOR tvev WITH (NOLOCK) ON tvv.VAL_ESTADOS_VALOR_ID = tvev.CODIGO
+  	-- DATOS DEL CONTRIBUYENTE
+  	INNER JOIN TIL_PER_PERSONAS tpp with(nolock) on tpp.DBOID = tvv.PER_PERSONAS_ID
+      -- referencias de ingreso
+      LEFT JOIN TIL_COB_REF_VALOR tcrv WITH(NOLOCk) ON tvv.DBOID = tcrv.VAL_VALORES_ID
+      LEFT JOIN TIL_COB_REFERENCIAS tcr WITH(NOLOCk) ON tcrv.COB_REFERENCIAS_ID = tcr.DBOID
+      LEFT JOIN TIL_COB_T_REFERENCIAS tctr WITH (NOLOCK) ON tcr.COB_T_REFERENCIA_ID = tctr.DBOID
+      LEFT JOIN TIL_COB_COBROS tcc WITH(NOLOCk) ON tcr.DBOID = tcc.COB_REFERENCIAS_ID
+      LEFT JOIN TIL_COB_EST_COBROS tcec WITH(NOLOCk) ON tcc.COB_EST_COBROS_ID = tcec.DBOID
+  	-- DOMICILIACIONES
+  	LEFT JOIN TIL_DOM_DOMICILIACIONES_VALOR tddv WITH (NOLOCK) ON tddv.VAL_VALORES_ID = tvv.DBOID 
+          -- FORMA DE PAGO
+      LEFT JOIN TIL_COB_FORMAS_PAGO tcfp WITH(NOLOCk) ON tcc.COB_FORMAS_PAGO_ID = tcfp.DBOID
+      -- EXENCIONES FISCALES
+      LEFT JOIN TIL_VAL_BFISCALES tvb ON tvb.VALORES_ID = tvv.DBOID
+   WHERE
+   	tvv.VAL_ESTADOS_VALOR_ID in ('VC', 'VCB', 'VP', 'VCP', 'EC','ECB','EP')
+  ORDER BY tvv.LITERAL_OBJETOTRIB, tvv.IDENTIFICADOR_VALOR, tvv.IDENTIFICADOR_DESGLOSE   
